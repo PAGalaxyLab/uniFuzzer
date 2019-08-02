@@ -3,6 +3,7 @@ uniFuzzer
 
 uniFuzzer is a fuzzing tool for closed-source binaries based on [Unicorn](https://github.com/unicorn-engine/unicorn) and [LibFuzzer](https://llvm.org/docs/LibFuzzer.html). Currently it supports fuzzing 32-bits LSB ELF files on ARM/MIPS, which are usually seen in IoT devices.
 
+[中文介绍](http://galaxylab.com.cn/%e5%9f%ba%e4%ba%8eunicorn%e5%92%8clibfuzzer%e7%9a%84%e6%a8%a1%e6%8b%9f%e6%89%a7%e8%a1%8cfuzzing/)
 
 # Features
 
