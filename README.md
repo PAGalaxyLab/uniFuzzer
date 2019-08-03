@@ -82,5 +82,6 @@ We can comment out `tb_flush(env);` as stated in that issue for performance.
 
 * support for syscall
 * support for other architectures and binary formats
-* support `GNU_HASH`
+* ~~support `GNU_HASH`~~
+* support `IFUNC`
 * integrate environment setup and provide APIs

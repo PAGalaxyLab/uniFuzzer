@@ -49,7 +49,7 @@
 
 #define OS_NUM_BASE 1			/* for DT_RELOCCOUNT */
 
-# define OS_NUM_GNU_HASH	0
+# define OS_NUM_GNU_HASH	1
 
 # define OS_NUM_PRELINK	0
 
@@ -60,6 +60,8 @@
 #define DYNAMIC_SIZE (DT_NUM + OS_NUM + ARCH_NUM)
 /* Keep ARCH specific entries into dynamic section at the end of the array */
 #define DT_RELCONT_IDX (DYNAMIC_SIZE - OS_NUM - ARCH_NUM)
+
+#define DT_GNU_HASH_IDX (DT_RELCONT_IDX + 1)
 
 #define DT_MIPS_GOTSYM_IDX	(DT_NUM + OS_NUM)
 #define DT_MIPS_LOCAL_GOTNO_IDX	(DT_NUM + OS_NUM +1)

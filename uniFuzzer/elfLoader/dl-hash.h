@@ -69,7 +69,16 @@ struct elf_resolve {
   unsigned long rtld_flags; /* RTLD_GLOBAL, RTLD_NOW etc. */
   Elf_Symndx nbucket;
 
-  Elf_Symndx *elf_buckets;
+  /* Data needed to support GNU hash style */
+  Elf32(Word) l_gnu_bitmask_idxbits;
+  Elf32(Word) l_gnu_shift;
+  const Elf32(Addr) *l_gnu_bitmask;
+
+  union
+  {
+    const Elf32(Word) *l_gnu_chain_zero;
+    const Elf_Symndx *elf_buckets;
+  };
 
   struct init_fini_list *init_fini;
   struct init_fini_list *rtld_local; /* keep tack of RTLD_LOCAL libs in same group */
@@ -78,7 +87,12 @@ struct elf_resolve {
    */
   Elf_Symndx nchain;
 
-  Elf_Symndx *chains;
+  union
+  {
+    const Elf32(Word) *l_gnu_buckets;
+    const Elf_Symndx *chains;
+  };
+
   unsigned long dynamic_info[DYNAMIC_SIZE];
 
   unsigned long n_phent;

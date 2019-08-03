@@ -83,7 +83,7 @@ reloc_fnc(struct elf_resolve *tpnt, struct r_scope_elem *scope,
 			break;
 		case R_386_COPY:
 			if (symbol_addr) {
-                uf_debug("\n%s move %d bytes from %x to %x",
+                uf_debug("%s move %d bytes from %x to %x",
                         symname, symtab[symtab_index].st_size,
                         symbol_addr, reloc_addr);
 
@@ -96,15 +96,13 @@ reloc_fnc(struct elf_resolve *tpnt, struct r_scope_elem *scope,
 			return -1;
 	}
 
-    uf_debug("\n\tpatched: %x ==> %x @ %x\n", old_val, *reloc_addr, reloc_addr);
+    uf_debug("\tpatched: %x ==> %x @ %x\n", old_val, *reloc_addr, reloc_addr);
 
 	return 0;
 }
 
 int _dl_parse_relocation_information_i386(struct elf_resolve *tpnt, struct r_scope_elem *scope,
     unsigned long rel_addr, unsigned long rel_size)
-    //int (*reloc_fnc)(struct elf_resolve *tpnt, struct r_scope_elem *scope,
-     //   ELF_RELOC *rpnt, Elf32(Sym) *symtab, char *strtab))
 {
 	unsigned int i;
 	char *strtab;
@@ -124,9 +122,6 @@ int _dl_parse_relocation_information_i386(struct elf_resolve *tpnt, struct r_sco
 
 		symtab_index = ELF_R_SYM(rpnt->r_info);
 
-		//debug_sym(symtab, strtab, symtab_index);
-		//debug_reloc(symtab, strtab, rpnt);
-
 		res = reloc_fnc(tpnt, scope, rpnt, symtab, strtab);
 
 		if (res == 0)
@@ -139,13 +134,11 @@ int _dl_parse_relocation_information_i386(struct elf_resolve *tpnt, struct r_sco
 		if (unlikely(res < 0)) {
 			int reloc_type = ELF_R_TYPE(rpnt->r_info);
 
-			fprintf(stderr, "can't handle reloc type %x in lib '%s'\n",
+			fprintf(stderr, "can't handle reloc type 0x%x in lib '%s'\n",
 				    reloc_type, tpnt->libname);
-			//return res;
             continue;
 		} else if (unlikely(res > 0)) {
 			fprintf(stderr, "can't resolve symbol in lib '%s'.\n", tpnt->libname);
-			//return res;
             continue;
 		}
 	}

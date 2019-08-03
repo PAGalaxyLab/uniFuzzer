@@ -196,6 +196,25 @@ map_writeable (int infile, Elf32(Phdr) *ppnt, int piclib, int flags,
     return retval;
 }
 
+static __always_inline void
+elf_machine_relative (Elf32(Addr) load_off, const Elf32(Addr) rel_addr,
+        Elf32(Word) relative_count) {
+    Elf32(Rel) * rpnt = (void *) rel_addr;
+    switch(e_machine) {
+        case EM_MIPS:
+            break;
+        case EM_ARM:
+        case EM_386:
+            --rpnt;
+            do {
+                Elf32(Addr) *const reloc_addr = (void *) (load_off + (++rpnt)->r_offset);
+
+                *reloc_addr += load_off;
+            } while (--relative_count);
+            break;
+    }
+}
+
 unsigned int _dl_parse_dynamic_info(Elf32(Dyn) *dpnt, unsigned long dynamic_info[],
                                     DL_LOADADDR_TYPE load_off)
 {
@@ -209,8 +228,11 @@ unsigned int _dl_parse_dynamic_info(Elf32(Dyn) *dpnt, unsigned long dynamic_info
         } else if (dpnt->d_tag < DT_LOPROC) {
             if (dpnt->d_tag == DT_RELOCCOUNT)
                 dynamic_info[DT_RELCONT_IDX] = dpnt->d_un.d_val;
+            if (dpnt->d_tag == DT_GNU_HASH)
+                dynamic_info[DT_GNU_HASH_IDX] = dpnt->d_un.d_ptr;
         }
-        else if(e_machine == EM_MIPS) {
+
+        if(e_machine == EM_MIPS) {
             switch(dpnt->d_tag) {
                 case DT_MIPS_GOTSYM:
                     dynamic_info[DT_MIPS_GOTSYM_IDX] = dpnt->d_un.d_val;
@@ -246,6 +268,7 @@ unsigned int _dl_parse_dynamic_info(Elf32(Dyn) *dpnt, unsigned long dynamic_info
         ADJUST_DYN_INFO(DT_SYMTAB, load_off);
         ADJUST_DYN_INFO(DT_RELOC_TABLE_ADDR, load_off);
         ADJUST_DYN_INFO(DT_JMPREL, load_off);
+        ADJUST_DYN_INFO(DT_GNU_HASH_IDX, load_off);
     }
 
     return rtld_flags;
@@ -440,7 +463,6 @@ static struct elf_resolve *_dl_load_elf_shared_library(struct dyn_elf **rpnt, co
                     || (tryaddr && tryaddr != status))
                   goto cant_map;
                 uc_err err;
-                //printf("tryaddr: %p, piclib: %d, offset: %x, size: %x, real addr %p\n", tryaddr, piclib, DL_GET_LIB_OFFSET(), size, status);
                 if((err = uc_mem_map_ptr(uc, 
                                tryaddr - (piclib ? 0 : DL_GET_LIB_OFFSET()),
                                (size+ADDR_ALIGN) & PAGE_ALIGN,
@@ -676,6 +698,7 @@ static int _dl_fixup(struct dyn_elf *rpnt, struct r_scope_elem *scope, attribute
         relative_count = tpnt->dynamic_info[DT_RELCONT_IDX];
         if (relative_count) { /* Optimize the XX_RELATIVE relocations if possible */
             reloc_size -= relative_count * sizeof(ELF_RELOC);
+            elf_machine_relative(tpnt->loadaddr, reloc_addr, relative_count);
             reloc_addr += relative_count * sizeof(ELF_RELOC);
         }
         goof += _dl_parse_relocation_information(rpnt, scope,

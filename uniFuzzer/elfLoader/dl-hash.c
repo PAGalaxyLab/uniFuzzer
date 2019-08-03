@@ -37,6 +37,17 @@ check_match (const Elf32(Sym) *sym, char *strtab, const char* undef_name, int ty
     return sym;
 }
 
+/* This is the new hash function that is used by the ELF linker to generate the
+ * GNU hash table that each executable and library will have if --hash-style=[gnu,both]
+ * is passed to the linker. We need it to decode the GNU hash table.  */
+static __inline__ Elf_Symndx _dl_gnu_hash (const unsigned char *name)
+{
+  unsigned long h = 5381;
+  unsigned char c;
+  for (c = *name; c != '\0'; c = *++name)
+    h = h * 33 + c;
+  return h & 0xffffffff;
+}
 
 static __inline__ Elf_Symndx _dl_elf_hash(const unsigned char *name)
 {
@@ -56,6 +67,49 @@ static __inline__ Elf_Symndx _dl_elf_hash(const unsigned char *name)
         hash ^= tmp >> 24;
     }
     return hash;
+}
+
+static __always_inline const Elf32(Sym) *
+_dl_lookup_gnu_hash(struct elf_resolve *tpnt, Elf32(Sym) *symtab, unsigned long hash,
+                    const char* undef_name, int type_class)
+{
+    Elf_Symndx symidx;
+    const Elf32(Sym) *sym;
+    char *strtab;
+
+    const Elf32(Addr) *bitmask = tpnt->l_gnu_bitmask;
+
+    //Elf32(Addr) bitmask_word = bitmask[(hash / __ELF_NATIVE_CLASS) & tpnt->l_gnu_bitmask_idxbits];
+    Elf32(Addr) bitmask_word = bitmask[(hash / 32) & tpnt->l_gnu_bitmask_idxbits];
+
+    //unsigned int hashbit1 = hash & (__ELF_NATIVE_CLASS - 1);
+    unsigned int hashbit1 = hash & (32 - 1);
+    //unsigned int hashbit2 = ((hash >> tpnt->l_gnu_shift) & (__ELF_NATIVE_CLASS - 1));
+    unsigned int hashbit2 = ((hash >> tpnt->l_gnu_shift) & (32 - 1));
+    assert (bitmask != NULL);
+
+    if (unlikely((bitmask_word >> hashbit1) & (bitmask_word >> hashbit2) & 1)) {
+        unsigned long rem;
+        Elf32(Word) bucket;
+
+        do_rem (rem, hash, tpnt->nbucket);
+        bucket = tpnt->l_gnu_buckets[rem];
+
+        if (bucket != 0) {
+            const Elf32(Word) *hasharr = &tpnt->l_gnu_chain_zero[bucket];
+            do {
+                if (((*hasharr ^ hash) >> 1) == 0) {
+                    symidx = hasharr - tpnt->l_gnu_chain_zero;
+                    strtab = (char *) (tpnt->dynamic_info[DT_STRTAB]);
+                    sym = check_match (&symtab[symidx], strtab, undef_name, type_class);
+                    if (sym != NULL)
+                        return sym;
+                }
+            } while ((*hasharr++ & 1u) == 0);
+        }
+    }
+    /* No symbol found.  */
+    return NULL;
 }
 
 static __always_inline const Elf32(Sym) *
@@ -110,6 +164,28 @@ struct elf_resolve *_dl_add_elf_hash_table(const char *libname,
     tpnt->dynamic_addr = (Elf32(Dyn) *)dynamic_addr;
     tpnt->libtype = loaded_file;
 
+    if (dynamic_info[DT_GNU_HASH_IDX] != 0) {
+        Elf32(Word) *hash32 = (Elf_Symndx*)dynamic_info[DT_GNU_HASH_IDX];
+
+        tpnt->nbucket = *hash32++;
+        Elf32(Word) symbias = *hash32++;
+        Elf32(Word) bitmask_nwords = *hash32++;
+        /* Must be a power of two.  */
+        assert ((bitmask_nwords & (bitmask_nwords - 1)) == 0);
+        tpnt->l_gnu_bitmask_idxbits = bitmask_nwords - 1;
+        tpnt->l_gnu_shift = *hash32++;
+
+        tpnt->l_gnu_bitmask = (Elf32(Addr) *) hash32;
+        // __ELF_NATIVE_CLASS should be 32 for 32bits target
+        //hash32 += __ELF_NATIVE_CLASS / 32 * bitmask_nwords;
+        hash32 += bitmask_nwords;
+
+        tpnt->l_gnu_buckets = hash32;
+        hash32 += tpnt->nbucket;
+        tpnt->l_gnu_chain_zero = hash32 - symbias;
+    } else
+    /* Fall using old SysV hash table if GNU hash is not present */
+
     if (dynamic_info[DT_HASH] != 0) {
         hash_addr = (Elf_Symndx*)(dynamic_info[DT_HASH]);
         tpnt->nbucket = *hash_addr++;
@@ -137,6 +213,8 @@ char *_dl_find_hash(const char *name, struct r_scope_elem *scope, struct elf_res
 
     char *weak_result = NULL;
     struct r_scope_elem *loop_scope;
+
+    unsigned long gnu_hash_number = _dl_gnu_hash((const unsigned char *)name);
 
     if ((sym_ref) && (sym_ref->sym) && (ELF32_ST_VISIBILITY(sym_ref->sym->st_other) == STV_PROTECTED)) {
             sym = sym_ref->sym;
@@ -171,6 +249,14 @@ char *_dl_find_hash(const char *name, struct r_scope_elem *scope, struct elf_res
 
             symtab = (Elf32(Sym) *) (intptr_t) (tpnt->dynamic_info[DT_SYMTAB]);
 
+            /* Prefer GNU hash style, if any */
+            if (tpnt->l_gnu_bitmask) {
+                sym = _dl_lookup_gnu_hash(tpnt, symtab, gnu_hash_number, name, type_class);
+                if (sym != NULL)
+                    /* If sym has been found, do not search further */
+                    break;
+            } else {
+
                 /* Use the old SysV-style hash table */
 
                 /* Calculate the old sysv hash number only once */
@@ -181,9 +267,10 @@ char *_dl_find_hash(const char *name, struct r_scope_elem *scope, struct elf_res
                 if (sym != NULL)
                     /* If sym has been found, do not search further */
                     break;
+            }
         } /* End of inner for */
     }
-    uf_debug("sym is %p\n", sym);
+    //uf_debug("sym is %p\n", sym);
 
     if (sym) {
         if (sym_ref) {
