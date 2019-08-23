@@ -134,7 +134,7 @@ map_writeable (int infile, Elf32(Phdr) *ppnt, int piclib, int flags,
         fprintf(stderr, "uc_mem_map_ptr failed: %d\n", err);
         return 0;
     }
-    uf_debug("uc mem map %p size 0x%x at %p with prop %d\n",
+    uf_debug("uc mem map writable %p size 0x%x at %p with prop %d\n",
             tryaddr - (piclib ? 0 : DL_GET_LIB_OFFSET()),
             (size+ADDR_ALIGN) & PAGE_ALIGN, status, prot_flags);
 
@@ -154,6 +154,7 @@ map_writeable (int infile, Elf32(Phdr) *ppnt, int piclib, int flags,
        and uClibc may not give us full pages for small
        allocations.  So only zero out up to memsz or the end of
        the page, whichever comes first.  */
+    // uniFuzzer UPDATE: we zero out until the end of the page
 
     /* CPNT is the beginning of the memsz portion not backed by
        filesz.  */
@@ -164,12 +165,14 @@ map_writeable (int infile, Elf32(Phdr) *ppnt, int piclib, int flags,
     map_size = (ppnt->p_vaddr + ppnt->p_filesz
             + ADDR_ALIGN) & PAGE_ALIGN;
 
-    memset (cpnt, 0,
+    memset (cpnt, 0, map_size - (ppnt->p_vaddr + ppnt->p_filesz));
+    /*
             MIN (map_size
              - (ppnt->p_vaddr
                 + ppnt->p_filesz),
              ppnt->p_memsz
              - ppnt->p_filesz));
+             */
 
     if (map_size < ppnt->p_vaddr + ppnt->p_memsz) {
         tryaddr = map_size + (char*)(piclib ? libaddr : DL_GET_LIB_OFFSET());
@@ -189,7 +192,7 @@ map_writeable (int infile, Elf32(Phdr) *ppnt, int piclib, int flags,
             fprintf(stderr, "uc_mem_map_ptr failed: %d\n", err);
             return NULL;
         }
-        uf_debug("uc mem map %p size 0x%x at %p with prop %d\n",
+        uf_debug("uc mem map writable next page %p size 0x%x at %p with prop %d\n",
                 map_size + (char*)(piclib ? libaddr : 0),
                 (size+ADDR_ALIGN) & PAGE_ALIGN, status, prot_flags);
 }
@@ -450,6 +453,7 @@ static struct elf_resolve *_dl_load_elf_shared_library(struct dyn_elf **rpnt, co
 
             if (ppnt->p_flags & PF_W) {
                 status = map_writeable (infile, ppnt, piclib, flags, libaddr);
+
                 if (status == NULL)
                     goto cant_map;
             } else {
